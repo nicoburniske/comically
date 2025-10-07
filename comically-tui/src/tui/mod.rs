@@ -23,15 +23,13 @@ use std::{
 };
 
 use crate::{
-    comic::OutputFormat,
-    pipeline::process_files,
     tui::{
-        config::MangaFile,
         error::ErrorInfo,
         splash::{splash_title, SplashScreen},
     },
     Event,
 };
+use comically::{ComicFile, OutputFormat};
 
 pub use theme::{Theme, ThemeMode};
 
@@ -218,7 +216,7 @@ fn run_fatal_error(
 }
 
 fn run_main(
-    manga_files: Vec<MangaFile>,
+    manga_files: Vec<ComicFile>,
     output_dir: PathBuf,
     terminal: &mut Terminal<impl Backend>,
     event_tx: mpsc::Sender<Event>,
@@ -347,7 +345,7 @@ fn process_events(
                 output_dir,
             } => {
                 if config.output_format == OutputFormat::Mobi
-                    && !crate::mobi_converter::is_kindlegen_available()
+                    && !comically::is_kindlegen_available()
                 {
                     return Err(ErrorInfo::error(
                             "KindleGen not installed",
@@ -364,7 +362,7 @@ fn process_events(
 
                 let event_tx = event_tx.clone();
                 rayon::spawn(move || {
-                    process_files(files, config, output_dir, event_tx);
+                    crate::pipeline::process_files(files, config, output_dir, event_tx);
                 });
             }
         }
@@ -372,7 +370,7 @@ fn process_events(
     Ok(true)
 }
 
-fn init(input_dir: &Path, output_dir: &Path) -> Result<Vec<MangaFile>, ErrorInfo> {
+fn init(input_dir: &Path, output_dir: &Path) -> Result<Vec<ComicFile>, ErrorInfo> {
     if let Err(e) = create_dir_all(output_dir) {
         return Err(ErrorInfo::error(
             "failed to create output directory",
@@ -401,32 +399,22 @@ fn init(input_dir: &Path, output_dir: &Path) -> Result<Vec<MangaFile>, ErrorInfo
     }
 }
 
-fn find_manga_files(dir: &std::path::Path) -> anyhow::Result<Vec<MangaFile>> {
+fn find_manga_files(dir: &std::path::Path) -> anyhow::Result<Vec<ComicFile>> {
     let mut files = Vec::new();
 
     for entry in std::fs::read_dir(dir).context("failed to read dir")? {
         let entry = entry.context("failed to read dir entry")?;
         let path = entry.path();
 
-        if let Some(ext) = path.extension() {
-            if matches!(
-                ext.to_str(),
-                Some("cbz") | Some("cbr") | Some("zip") | Some("rar")
-            ) {
-                let name = path
-                    .file_stem()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .to_string();
-                files.push(MangaFile {
-                    archive_path: path,
-                    name,
-                });
+        match path.extension().and_then(|ext| ext.to_str()) {
+            Some("cbz") | Some("cbr") | Some("zip") | Some("rar") => {
+                files.push(ComicFile::new(path));
             }
+            _ => {}
         }
     }
 
-    files.sort_by(|a, b| a.name.cmp(&b.name));
+    files.sort_by(|a, b| a.title().cmp(b.title()));
     Ok(files)
 }
 

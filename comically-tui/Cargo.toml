@@ -1,0 +1,47 @@
+[package]
+name = "comically-tui"
+authors = ["nico burniske"]
+version = "0.1.5"
+edition = "2021"
+description = "comically fast manga & comic optimizer for e-readers - TUI application"
+keywords = ["manga", "comic", "kindle", "epub", "ebook"]
+license = "MIT"
+readme = "../README.md"
+repository = "https://github.com/nicoburniske/comically"
+
+[[bin]]
+name = "comically"
+path = "src/main.rs"
+
+[build-dependencies]
+imageproc = { workspace = true }
+
+[dependencies]
+comically = { path = "../comically" }
+
+# CLI
+clap = { version = "4.5", features = ["derive"] }
+
+# TUI
+ratatui = "0.29.0"
+ratatui-image = { version = "8.0.1", features = ["crossterm"] }
+termbg = "0.6"
+ansi_colours = "1.2.3"
+supports-color = "3.0.2"
+
+# Image processing (for preview)
+imageproc = { workspace = true }
+
+# Utilities
+anyhow = { workspace = true }
+rand = "0.9"
+rayon = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Logging
+log = { workspace = true }
+tracing = { workspace = true }
+tracing-error = { workspace = true }
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+tracing-log = { version = "0.2.0" }

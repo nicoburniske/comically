@@ -1,15 +1,10 @@
-mod cbz_builder;
-mod comic;
-mod comic_archive;
-mod epub_builder;
-mod image_processor;
-mod mobi_converter;
 mod pipeline;
 mod tui;
 
 use anyhow::Context;
 use clap::Parser;
 use ratatui::{crossterm::event, layout::Size, Viewport};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Layer};
 
 use std::{
     env,
@@ -18,10 +13,11 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Layer};
 
-use crate::comic::{ComicConfig, ProgressEvent};
+use comically::{ComicConfig, ComicFile};
+
 use crate::tui::config::ConfigEvent;
+use crate::tui::progress::ProgressEvent;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -196,7 +192,7 @@ pub enum Event {
     Progress(ProgressEvent),
     Config(ConfigEvent),
     StartProcessing {
-        files: Vec<PathBuf>,
+        files: Vec<ComicFile>,
         config: ComicConfig,
         output_dir: PathBuf,
     },

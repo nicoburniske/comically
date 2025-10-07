@@ -1,0 +1,18 @@
+[package]
+name = "comically-cli"
+version = "0.1.5"
+edition = "2021"
+authors = ["Karim"]
+description = "Command-line tool for converting comic archives to e-reader formats"
+license = "MIT"
+
+[[bin]]
+name = "comically-cli"
+path = "src/main.rs"
+
+[dependencies]
+comically = { path = "../comically" }
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
+env_logger = "0.11"
+log = "0.4"

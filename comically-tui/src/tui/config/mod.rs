@@ -15,24 +15,23 @@ use ratatui_image::{
     thread::{ResizeRequest, ResizeResponse, ThreadProtocol},
     FilterType, Resize, ResizeEncodeRender, StatefulImage,
 };
+
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
 
-use crate::{
-    comic::{ComicConfig, ImageFormat, OutputFormat, PngCompression, SplitStrategy},
-    comic_archive,
-    tui::{
-        button::{Button, ButtonVariant},
-        config::device_selector::DeviceSelectorState,
-        config::help::{render_help_popup, HelpState},
-        utils::{padding, themed_block, Side},
-        Theme,
-    },
+use comically::{ComicConfig, ComicFile, ImageFormat, OutputFormat, PngCompression, SplitStrategy};
+
+use crate::tui::{
+    button::{Button, ButtonVariant},
+    config::device_selector::DeviceSelectorState,
+    config::help::{render_help_popup, HelpState},
+    utils::{padding, themed_block, Side},
+    Theme,
 };
 
 pub struct ConfigState {
-    pub files: Vec<(MangaFile, bool)>,
+    pub files: Vec<(ComicFile, bool)>,
     pub file_list_state: ListState,
     pub selected_field: Option<SelectedField>,
     pub preview_state: PreviewState,
@@ -50,12 +49,6 @@ pub enum ModalState {
     None,
     Help(HelpState),
     DeviceSelector(DeviceSelectorState),
-}
-
-#[derive(Debug)]
-pub struct MangaFile {
-    pub archive_path: PathBuf,
-    pub name: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -84,7 +77,7 @@ pub struct LoadedPreviewImage {
     file_idx: usize,
     page_idx: usize,
     total_pages: usize,
-    archive_path: PathBuf,
+    archive_path: ComicFile,
     width: u32,
     height: u32,
     config: ComicConfig,
@@ -92,7 +85,7 @@ pub struct LoadedPreviewImage {
 
 enum PreviewRequest {
     LoadFile {
-        archive_path: PathBuf,
+        archive_path: ComicFile,
         config: ComicConfig,
         page_idx: Option<usize>,
         file_idx: usize,
@@ -104,7 +97,7 @@ pub enum ConfigEvent {
         file_idx: usize,
         page_idx: usize,
         total_pages: usize,
-        archive_path: PathBuf,
+        archive_path: ComicFile,
         image: DynamicImage,
         config: ComicConfig,
     },
@@ -116,11 +109,11 @@ impl ConfigState {
     pub fn new(
         event_tx: mpsc::Sender<crate::Event>,
         picker: Picker,
-        files: Vec<MangaFile>,
+        files: Vec<ComicFile>,
         theme: Theme,
         output_dir: PathBuf,
     ) -> Self {
-        let files: Vec<(MangaFile, bool)> = files.into_iter().map(|f| (f, true)).collect();
+        let files: Vec<(ComicFile, bool)> = files.into_iter().map(|f| (f, true)).collect();
 
         let mut list_state = ListState::default();
         if !files.is_empty() {
@@ -184,7 +177,7 @@ impl ConfigState {
 
                 if let Some(preset) = selector.handle_key(key) {
                     self.modal_state = ModalState::None;
-                    self.config.device = preset;
+                    self.config.device = preset.into();
                     return;
                 }
             }
@@ -235,7 +228,7 @@ impl ConfigState {
                 self.config.right_to_left = !self.config.right_to_left;
             }
             KeyCode::Char('s') => {
-                use crate::comic::SplitStrategy;
+                use comically::comic::SplitStrategy;
                 self.config.split = match self.config.split {
                     SplitStrategy::None => SplitStrategy::Split,
                     SplitStrategy::Split => SplitStrategy::Rotate,
@@ -273,7 +266,11 @@ impl ConfigState {
             }
             KeyCode::Char('d') => {
                 self.modal_state = ModalState::DeviceSelector(DeviceSelectorState::new(
-                    self.config.device.clone(),
+                    self.config
+                        .device
+                        .clone()
+                        .try_as_preset()
+                        .unwrap_or(comically::device::Preset::KindlePw11),
                 ));
             }
             KeyCode::Char('o') => {
@@ -313,11 +310,12 @@ impl ConfigState {
     }
 
     fn send_start_processing(&self) {
-        let selected_paths: Vec<PathBuf> = self
+        let selected_paths: Vec<ComicFile> = self
             .files
             .iter()
             .filter(|(_, selected)| *selected)
-            .map(|(file, _)| file.archive_path.clone())
+            .map(|(file, _)| file)
+            .cloned()
             .collect();
 
         if !selected_paths.is_empty() {
@@ -378,7 +376,7 @@ impl ConfigState {
                     .preview_state
                     .preview_tx
                     .send(PreviewRequest::LoadFile {
-                        archive_path: file.archive_path.clone(),
+                        archive_path: file.clone(),
                         config: self.config.clone(),
                         page_idx: Some(idx),
                         file_idx,
@@ -639,7 +637,7 @@ impl<'a> Widget for FileListWidget<'a> {
             .iter()
             .map(|(file, selected)| {
                 let checkbox = if *selected { "[✓]" } else { "[ ]" };
-                let content = format!("{} {}", checkbox, file.name);
+                let content = format!("{} {}", checkbox, file.title());
                 ListItem::new(content).style(self.state.theme.content)
             })
             .collect();
@@ -675,6 +673,7 @@ impl<'a> SettingsWidget<'a> {
         Self { state }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn render_adjustable_setting(
         &mut self,
         label: &str,
@@ -754,15 +753,20 @@ impl<'a> SettingsWidget<'a> {
 
     fn render_device_selector_button(&mut self, area: Rect, buf: &mut Buffer) {
         let current_preset = &self.state.config.device;
-        let (width, height) = current_preset.dimensions;
-        let button_text = format!("{} ({}x{})", current_preset.name, width, height);
+        let (width, height) = current_preset.dimensions();
+        let button_text = format!("{} ({}x{})", current_preset.name(), width, height);
 
         base_button(button_text, self.state)
             .on_click(|| {
                 // make sure the mouse click is not used in the popup layer
                 self.state.last_mouse_click = None;
                 self.state.modal_state = ModalState::DeviceSelector(DeviceSelectorState::new(
-                    self.state.config.device.clone(),
+                    self.state
+                        .config
+                        .device
+                        .clone()
+                        .try_as_preset()
+                        .unwrap_or(comically::device::Preset::KindlePw11),
                 ));
             })
             .label("device")
@@ -1045,7 +1049,7 @@ impl<'a> Widget for PreviewWidget<'a> {
                     .preview_state
                     .loaded_image
                     .as_ref()
-                    .map(|loaded| loaded.archive_path != selected_file.archive_path)
+                    .map(|loaded| loaded.archive_path != *selected_file)
             })
             .unwrap_or(true);
 
@@ -1106,11 +1110,7 @@ impl<'a> Widget for PreviewWidget<'a> {
             let [title_area, image_area] =
                 Layout::vertical([Constraint::Length(2), Constraint::Min(0)]).areas(preview_area);
 
-            let file_name = loaded_image
-                .archive_path
-                .file_stem()
-                .unwrap()
-                .to_string_lossy();
+            let file_name = loaded_image.archive_path.title();
 
             let page_info = format!(
                 "page {} of {}",
@@ -1218,11 +1218,11 @@ fn base_button<'input, 'state>(
 }
 
 fn load_and_process_preview(
-    path: &PathBuf,
+    path: &ComicFile,
     config: &ComicConfig,
     page_index: Option<usize>,
 ) -> anyhow::Result<(DynamicImage, usize, usize)> {
-    let mut archive_files: Vec<_> = comic_archive::unarchive_comic_iter(path)?
+    let mut archive_files: Vec<_> = comically::archive::unarchive_comic_iter(path)?
         .filter_map(|r| r.ok())
         .collect();
 
@@ -1247,19 +1247,19 @@ fn load_and_process_preview(
 
     let img = imageproc::image::load_from_memory(&archive_file.data)?;
 
-    let processed_images = crate::image_processor::process_image(img, config);
+    let processed_images = comically::image::process(img, config);
 
     let first_image = processed_images
         .into_iter()
         .next()
         .ok_or_else(|| anyhow::anyhow!("No processed images"))?;
 
-    let mut compressed_buffer = Vec::new();
+    let mut compressed_buffer = Vec::with_capacity(first_image.as_bytes().len());
     let quality = match config.image_format {
         ImageFormat::Jpeg { quality } | ImageFormat::WebP { quality } => quality,
         _ => 85, // Default quality for preview
     };
-    crate::image_processor::compress_to_jpeg(&first_image, &mut compressed_buffer, quality)?;
+    comically::image::compress_to_jpeg(&first_image, &mut compressed_buffer, quality)?;
 
     let compressed_img = imageproc::image::load_from_memory(&compressed_buffer)?;
 

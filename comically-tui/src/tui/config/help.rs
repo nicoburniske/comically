@@ -208,7 +208,7 @@ pub fn render_help_popup(area: Rect, buf: &mut Buffer, theme: &Theme, help_state
     // Render documentation for selected keybinding
     if let Some(selected) = help_state.list_state.selected() {
         if let Some(keybinding) = help_state.keybindings.get(selected) {
-            let docs_block = themed_block(Some(&keybinding.action), theme);
+            let docs_block = themed_block(Some(keybinding.action), theme);
             let docs_inner = docs_block.inner(docs_area);
             docs_block.render(docs_area, buf);
 

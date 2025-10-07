@@ -1,0 +1,30 @@
+[package]
+name = "comically"
+authors = ["nico burniske"]
+version = "0.1.5"
+edition = "2021"
+description = "comically fast manga & comic optimizer for e-readers - core library"
+keywords = ["manga", "comic", "kindle", "epub", "ebook"]
+license = "MIT"
+readme = "../README.md"
+repository = "https://github.com/nicoburniske/comically"
+
+[dependencies]
+anyhow = { workspace = true }
+arrayvec = "0.7"
+fast_image_resize = "5.0"
+imageproc = { workspace = true }
+log = { workspace = true }
+num_enum = { version = "0.7" }
+parking_lot = "0.12"
+rayon = { workspace = true }
+strum = { version = "0.27", features = ["derive"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+walkdir = { workspace = true }
+webp = { workspace = true }
+zip = { workspace = true }
+unrar = { workspace = true }

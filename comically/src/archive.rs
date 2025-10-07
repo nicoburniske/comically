@@ -1,9 +1,13 @@
 use anyhow::Context;
+use unrar::Archive;
+use zip::{HasZipMetadata, ZipArchive};
+
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
-use unrar::Archive;
-use zip::ZipArchive;
+
+use crate::comic::ArchiveExt;
+use crate::ComicFile;
 
 #[derive(Debug, Clone)]
 pub struct ArchiveFile {
@@ -50,21 +54,15 @@ impl Iterator for ArchiveIter {
     }
 }
 
-pub fn unarchive_comic_iter(comic_file: impl AsRef<Path>) -> anyhow::Result<ArchiveIter> {
-    let path = comic_file.as_ref();
-    let ext = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| e.to_lowercase())
-        .unwrap_or_default();
-
-    let reader = match ext.as_str() {
-        "cbz" | "zip" => {
-            let file = File::open(path).context("Failed to open zip file")?;
+pub fn unarchive_comic_iter(comic_file: &ComicFile) -> anyhow::Result<ArchiveIter> {
+    let reader = match comic_file.extension() {
+        ArchiveExt::Cbz | ArchiveExt::Zip => {
+            let file = File::open(comic_file.as_path()).context("Failed to open zip file")?;
             ArchiveIter::Zip(ZipReader::new(file)?)
         }
-        "cbr" | "rar" => ArchiveIter::Rar(RarReader::new(path)?),
-        _ => anyhow::bail!("Unsupported archive format: {}", ext),
+        ArchiveExt::Cbr | ArchiveExt::Rar => {
+            ArchiveIter::Rar(RarReader::new(comic_file.as_path())?)
+        }
     };
 
     Ok(reader)
@@ -110,7 +108,7 @@ impl Iterator for ZipReader {
                 None => continue,
             };
 
-            let mut data = Vec::new();
+            let mut data = Vec::with_capacity(file.get_metadata().uncompressed_size as usize);
             if let Err(e) = Read::read_to_end(&mut file, &mut data) {
                 return Some(Err(e.into()));
             }
@@ -237,7 +235,7 @@ fn has_image_extension(path: &Path) -> bool {
 #[ignore]
 #[test]
 fn test_unarchive_comic_iter() {
-    let files = unarchive_comic_iter(std::path::PathBuf::from("v12.cbz"))
+    let files = unarchive_comic_iter(&ComicFile::new(std::path::PathBuf::from("v12.cbz")))
         .unwrap()
         .collect::<Vec<_>>();
     println!("{:?}", files.len());

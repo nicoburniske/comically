@@ -1,14 +1,12 @@
 use anyhow::{Context, Result};
+
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
-use crate::comic::Comic;
-
 /// Converts an EPUB file to MOBI using Amazon's KindleGen
-pub fn create_mobi(comic: &Comic) -> Result<SpawnedKindleGen> {
-    log::info!("Creating MOBI: {:?}", comic);
-    let epub_path = comic.epub_file();
+pub fn create(epub_path: PathBuf, output_mobi: PathBuf) -> Result<SpawnedKindleGen> {
+    log::info!("Creating MOBI from: {:?}", epub_path);
     if !epub_path.exists() {
         anyhow::bail!("EPUB file does not exist: {}", epub_path.display());
     }
@@ -26,8 +24,8 @@ pub fn create_mobi(comic: &Comic) -> Result<SpawnedKindleGen> {
 
     let spawned = SpawnedKindleGen {
         child,
-        mobi_file: comic.epub_file().with_extension("mobi"),
-        output_mobi: comic.output_path(),
+        mobi_file: epub_path.with_extension("mobi"),
+        output_mobi,
     };
 
     Ok(spawned)
